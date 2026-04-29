@@ -1,7 +1,10 @@
 use anyhow::{Context, Result};
 use crossterm::{
     cursor::{Hide, MoveTo, Show},
-    event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers,
+        MouseEvent, MouseEventKind,
+    },
     execute, queue,
     style::Print,
     terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
@@ -326,7 +329,7 @@ impl PagerTerminalGuard {
     fn enter() -> Result<Self> {
         enable_raw_mode()?;
         let mut stdout = stdout();
-        execute!(stdout, EnterAlternateScreen, Hide)?;
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture, Hide)?;
         Ok(Self { stdout })
     }
 
@@ -337,7 +340,7 @@ impl PagerTerminalGuard {
 
 impl Drop for PagerTerminalGuard {
     fn drop(&mut self) {
-        let _ = execute!(self.stdout, Show, LeaveAlternateScreen);
+        let _ = execute!(self.stdout, DisableMouseCapture, Show, LeaveAlternateScreen);
         let _ = disable_raw_mode();
     }
 }
@@ -412,6 +415,12 @@ impl Pager {
                 }) => {
                     top = Self::scroll_down(&lines, top, 1);
                 }
+                Event::Mouse(MouseEvent {
+                    kind: MouseEventKind::ScrollDown,
+                    ..
+                }) => {
+                    top = Self::scroll_down(&lines, top, 3);
+                }
                 Event::Key(KeyEvent {
                     code: KeyCode::Up, ..
                 })
@@ -421,6 +430,12 @@ impl Pager {
                     ..
                 }) => {
                     top = top.saturating_sub(1);
+                }
+                Event::Mouse(MouseEvent {
+                    kind: MouseEventKind::ScrollUp,
+                    ..
+                }) => {
+                    top = top.saturating_sub(3);
                 }
                 Event::Key(KeyEvent {
                     code: KeyCode::PageDown,
@@ -482,7 +497,7 @@ impl Pager {
         let page_height = Self::page_height().min(term_height.saturating_sub(1) as usize);
         let end = top.saturating_add(page_height).min(lines.len());
         let status = format!(
-            "[Esc/q] Quit  [j/k or arrows] Scroll  [PgUp/PgDn/Space] Page  [g/G] Start/End  {}/{}",
+            "[Esc/q] Quit  [j/k/arrows/wheel] Scroll  [PgUp/PgDn/Space] Page  [g/G] Start/End  {}/{}",
             end.min(lines.len()),
             lines.len()
         );
